@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Text;
+using System.Reflection;
 
 namespace HOWS;
 
@@ -45,91 +46,86 @@ public class Program
             HttpListenerRequest req = ctx.Request;
             HttpListenerResponse resp = ctx.Response;
 
-            string uri = req?.Url?.ToString()!;
-            string path = uri.Replace(HOST_DOMAIN, WEB_ROOT);
-            
-            if (!File.Exists(path))
-            {
-                if (!path.EndsWith("/"))
-                {
-                    resp.StatusCode = (int)HttpStatusCode.MovedPermanently;
-                    resp.Headers.Add($"Location: {uri}/");
-                    resp.Close();
-                    continue;
-                }
-            }
+            Console.WriteLine($"{req?.HttpMethod} {req?.Url?.ToString()} ({req?.RemoteEndPoint})");
+            //Console.WriteLine($"Original String: {req?.Url?.OriginalString}");
+            //Console.WriteLine($"Absolute Path: {req?.Url?.AbsolutePath}");
 
-            Console.WriteLine($"{req?.HttpMethod} {uri} ({req?.UserHostAddress})");
-            Console.WriteLine($"URL: {uri}");
-            Console.WriteLine($"Path: {path}");
-
-            string? dirPath = $"{HOST_DOMAIN}/{req?.RawUrl}".Replace(HOST_DOMAIN, WEB_ROOT);
-            string? filePath = "";
-            bool isIndex = false;
-            if (Directory.Exists(dirPath))
-            {
-                isIndex = true;
-                filePath = Path.Combine(dirPath, "index.html");
-            }
-            else if (File.Exists(dirPath))
-            {
-                filePath = dirPath;
-            }
-            dirPath = Directory.GetParent(dirPath ?? "")?.FullName;
-            Console.WriteLine(dirPath);
-            Console.WriteLine(filePath);
-            Console.WriteLine();
+            string absolutePath = req?.Url?.AbsolutePath ?? "";
+            string resPath = $"{WEB_ROOT}{absolutePath}";
 
             byte[] data;
-            if (!File.Exists(filePath))
+            // If the request is a directory
+            if (Directory.Exists(resPath))
             {
-                if (isIndex)
+                string indexFile = Path.Combine(resPath, "index.html");
+                // If an index page exists, get that
+                if (File.Exists(indexFile))
                 {
-                    string[] dirs = Directory.GetDirectories(dirPath ?? "");
-                    string[] files = Directory.GetFiles(dirPath ?? "");
-                    StringBuilder sb = new($"<h1>Index of {req?.RawUrl}</h1><ul>");
+                    data = File.ReadAllBytes(indexFile);
+                    resp.ContentType = GetContentType(indexFile);
+                    resp.ContentEncoding = Encoding.UTF8;
+                    resp.ContentLength64 = data.LongLength;
+                    resp.StatusCode = (int)HttpStatusCode.OK;
+                }
+                // Otherwise, list all items in the directory
+                else
+                {
+                    string[] dirs = Directory.GetDirectories(resPath);
+                    string[] files = Directory.GetFiles(resPath);
+                    string baseFile = File.ReadAllText("Resources/dirlist.html");
+                    StringBuilder content = new($"<h1>Index of {absolutePath}</h1><ul>");
                     foreach (string dir in dirs)
                     {
                         string d = dir.Replace(WEB_ROOT, "").Remove(0, 1);
-                        sb.AppendLine($"<li><a href='{d}'>{d}/</a></li>");
+                        content.AppendLine($"<li><a href='{d}'>{d}/</a></li>");
                     }
                     foreach (string file in files)
                     {
                         string f = file.Replace(WEB_ROOT, "").Remove(0, 1);
-                        sb.AppendLine($"<li><a href='{f}'>{f}</a></li>");
+                        content.AppendLine($"<li><a href='{f}'>{f}</a></li>");
                     }
-                    sb.Append("</ul>");
-                    data = Encoding.UTF8.GetBytes(sb.ToString());
+                    content.Append("</ul>");
+                    baseFile = baseFile.Replace("@title", $"Index of {absolutePath}");
+                    baseFile = baseFile.Replace("@content", content.ToString());
+                    data = Encoding.UTF8.GetBytes(baseFile);
                     resp.ContentType = "text/html";
                     resp.ContentEncoding = Encoding.UTF8;
                     resp.ContentLength64 = data.LongLength;
                     resp.StatusCode = (int)HttpStatusCode.OK;
                 }
+            }
+            // The request is not a file, so 404
+            else if (!File.Exists(resPath))
+            {
+                FileInfo fileInfo = new FileInfo(resPath);
+                string custom404 = Path.Combine(fileInfo.Directory?.FullName ?? "", "404.html");
+                if (File.Exists(custom404))
+                {
+                    data = File.ReadAllBytes(custom404);
+                }
                 else
                 {
-                    string custom404 = Path.Combine(dirPath ?? "", "404.html");
-                    if (File.Exists(custom404))
-                    {
-                        data = File.ReadAllBytes(custom404);
-                    }
-                    else
-                    {
-                        data = Encoding.UTF8.GetBytes(@"<html><head><title>404 Not Found</title></head><body><center><h1>404 Not Found</h1></center><hr><center>HOWS 0.0.1</center></body></html>");
-                    }
-                    resp.ContentType = "text/html";
-                    resp.ContentEncoding = Encoding.UTF8;
-                    resp.ContentLength64 = data.LongLength;
-                    resp.StatusCode = (int)HttpStatusCode.NotFound;
+                    string page = File.ReadAllText("Resources/404.html");
+                    page = page.Replace("@version", Assembly.GetExecutingAssembly().GetName().Version?.ToString());
+                    data = Encoding.UTF8.GetBytes(page);
                 }
+                resp.ContentType = "text/html";
+                resp.ContentEncoding = Encoding.UTF8;
+                resp.ContentLength64 = data.LongLength;
+                resp.StatusCode = (int)HttpStatusCode.NotFound;
             }
+            // The request is a file, read it and send the data
             else
             {
-                data = File.ReadAllBytes(filePath);
-                resp.ContentType = GetContentType(filePath);
+                data = File.ReadAllBytes(resPath);
+                resp.ContentType = GetContentType(resPath);
                 resp.ContentEncoding = Encoding.UTF8;
                 resp.ContentLength64 = data.LongLength;
                 resp.StatusCode = (int)HttpStatusCode.OK;
             }
+            //Console.WriteLine(dirPath);
+            //Console.WriteLine($"File: {resPath}");
+            Console.WriteLine();
 
             await resp.OutputStream.WriteAsync(data, 0, data.Length);
             resp.Close();
