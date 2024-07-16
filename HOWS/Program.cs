@@ -1,13 +1,14 @@
 ﻿using System.Net;
 using System.Text;
-using System.Reflection;
+using System.Text.Json;
 
 namespace HOWS;
 
 public class Program
 {
-    private static string WEB_ROOT = "";
-    private const string HOST_DOMAIN = "http://localhost:3058";
+    private static string WebRoot = "";
+    private static string HostAddress = "";
+    public static Config Config = new();
 
     private static HttpListener? listener;
 
@@ -15,14 +16,36 @@ public class Program
     {
         try
         {
-            if (!Directory.Exists("www"))
+            if (File.Exists("config.json"))
             {
-                Directory.CreateDirectory("www");
+                Config = JsonSerializer.Deserialize<Config>(File.ReadAllText("config.json"), new JsonSerializerOptions
+                {
+                    AllowTrailingCommas = true,
+                    ReadCommentHandling = JsonCommentHandling.Skip
+                })!;
             }
-            WEB_ROOT = $"{AppDomain.CurrentDomain.BaseDirectory}www";
+            else
+            {
+                string configFile = JsonSerializer.Serialize(Config, new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+                File.WriteAllText("config.json", configFile);
+            }
+            //Console.WriteLine(Config);
+
+            if (!Directory.Exists(Config.WebRootName))
+            {
+                Directory.CreateDirectory(Config.WebRootName);
+            }
+
+            WebRoot = $"{AppDomain.CurrentDomain.BaseDirectory}{Config.WebRootName}";
+            HostAddress = $"http://{Config.HostAddress}:{Config.HostPort}";
+
+            //return;
 
             listener = new HttpListener();
-            listener.Prefixes.Add($"{HOST_DOMAIN}/");
+            listener.Prefixes.Add($"{HostAddress}/");
             listener.Start();
 
             Task responseTask = RequestCallback();
@@ -51,7 +74,7 @@ public class Program
             //Console.WriteLine($"Absolute Path: {req?.Url?.AbsolutePath}");
 
             string absolutePath = req?.Url?.AbsolutePath ?? "";
-            string resPath = $"{WEB_ROOT}{absolutePath}";
+            string resPath = $"{WebRoot}{absolutePath}";
 
             byte[] data;
             // If the request is a directory
@@ -70,28 +93,38 @@ public class Program
                 // Otherwise, list all items in the directory
                 else
                 {
-                    string[] dirs = Directory.GetDirectories(resPath);
-                    string[] files = Directory.GetFiles(resPath);
-                    string baseFile = File.ReadAllText("Resources/dirlist.html");
-                    StringBuilder content = new($"<h1>Index of {absolutePath}</h1><ul>");
-                    foreach (string dir in dirs)
+                    // If allowed to list directory contents, list them
+                    if (Config.AllowDirList)
                     {
-                        string d = dir.Replace(WEB_ROOT, "").Remove(0, 1);
-                        content.AppendLine($"<li><a href='{d}'>{d}/</a></li>");
+                        string[] dirs = Directory.GetDirectories(resPath);
+                        string[] files = Directory.GetFiles(resPath);
+                        string baseFile = File.ReadAllText("Resources/dirlist.html");
+                        StringBuilder content = new($"<h1>Index of {absolutePath}</h1><ul>");
+                        foreach (string dir in dirs)
+                        {
+                            string d = dir.Replace(WebRoot, "").Remove(0, 1);
+                            content.AppendLine($"<li><a href='{d}'>{d}/</a></li>");
+                        }
+                        foreach (string file in files)
+                        {
+                            string f = file.Replace(WebRoot, "").Remove(0, 1);
+                            content.AppendLine($"<li><a href='{f}'>{f}</a></li>");
+                        }
+                        content.Append("</ul>");
+                        baseFile = baseFile.Replace("@title", $"Index of {absolutePath}");
+                        baseFile = baseFile.Replace("@content", content.ToString());
+                        data = Encoding.UTF8.GetBytes(baseFile);
+                        resp.ContentType = "text/html";
+                        resp.ContentEncoding = Encoding.UTF8;
+                        resp.ContentLength64 = data.LongLength;
+                        resp.StatusCode = (int)HttpStatusCode.OK;
                     }
-                    foreach (string file in files)
+                    // Otherwise, 403 forbidden
+                    else
                     {
-                        string f = file.Replace(WEB_ROOT, "").Remove(0, 1);
-                        content.AppendLine($"<li><a href='{f}'>{f}</a></li>");
+                        data = [];
+                        resp.StatusCode = (int)HttpStatusCode.Forbidden;
                     }
-                    content.Append("</ul>");
-                    baseFile = baseFile.Replace("@title", $"Index of {absolutePath}");
-                    baseFile = baseFile.Replace("@content", content.ToString());
-                    data = Encoding.UTF8.GetBytes(baseFile);
-                    resp.ContentType = "text/html";
-                    resp.ContentEncoding = Encoding.UTF8;
-                    resp.ContentLength64 = data.LongLength;
-                    resp.StatusCode = (int)HttpStatusCode.OK;
                 }
             }
             // The request is not a file, so 404
@@ -106,7 +139,7 @@ public class Program
                 else
                 {
                     string page = File.ReadAllText("Resources/404.html");
-                    page = page.Replace("@version", Assembly.GetExecutingAssembly().GetName().Version?.ToString());
+                    page = page.Replace("@version", Config.ShowVersion ? Utils.GetVersion() : "");
                     data = Encoding.UTF8.GetBytes(page);
                 }
                 resp.ContentType = "text/html";
@@ -127,6 +160,7 @@ public class Program
             //Console.WriteLine($"File: {resPath}");
             Console.WriteLine();
 
+            resp.Headers.Add("Server", $"HOWS/{(Config.ShowVersion ? Utils.GetVersion() : "?")}");
             await resp.OutputStream.WriteAsync(data, 0, data.Length);
             resp.Close();
         }
