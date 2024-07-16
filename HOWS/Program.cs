@@ -32,7 +32,6 @@ public class Program
                 });
                 File.WriteAllText("config.json", configFile);
             }
-            //Console.WriteLine(Config);
 
             if (!Directory.Exists(Config.WebRootName))
             {
@@ -41,8 +40,6 @@ public class Program
 
             WebRoot = $"{AppDomain.CurrentDomain.BaseDirectory}{Config.WebRootName}";
             HostAddress = $"http://{Config.HostAddress}:{Config.HostPort}";
-
-            //return;
 
             listener = new HttpListener();
             listener.Prefixes.Add($"{HostAddress}/");
