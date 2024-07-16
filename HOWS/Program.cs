@@ -7,7 +7,7 @@ namespace HOWS;
 public class Program
 {
     private static string WEB_ROOT = "";
-    private const string HOST_DOMAIN = "http://192.168.1.7:3058";
+    private const string HOST_DOMAIN = "http://localhost:3058";
 
     private static HttpListener? listener;
 
