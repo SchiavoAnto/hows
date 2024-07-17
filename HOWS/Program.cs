@@ -74,6 +74,17 @@ public class Program
             string absolutePath = req?.Url?.AbsolutePath ?? "";
             string resPath = $"{WebRoot}{absolutePath}";
 
+            if (!File.Exists(resPath))
+            {
+                if (!resPath.EndsWith("/"))
+                {
+                    resp.StatusCode = (int)HttpStatusCode.MovedPermanently;
+                    resp.Headers.Add($"Location: {req?.Url}/");
+                    resp.Close();
+                    continue;
+                }
+            }
+
             byte[] data = [];
             // If the request is a directory
             if (Directory.Exists(resPath))
@@ -174,7 +185,7 @@ public class Program
                     StartInfo = new()
                     {
                         FileName = "php",
-                        Arguments = filePath,
+                        Arguments = @$"""{filePath}""",
                         RedirectStandardOutput = true,
                         UseShellExecute = false,
                         CreateNoWindow = true,
@@ -187,6 +198,7 @@ public class Program
                 if (exitCode != 0)
                 {
                     data = ReadErrorFile("500 Internal Server Error", "500 Internal Server Error");
+                    resp.StatusCode = (int)HttpStatusCode.InternalServerError;
                 }
                 else
                 {
@@ -222,7 +234,7 @@ public class Program
         FileInfo info = new(filePath);
         return info.Extension switch
         {
-            ".html" or ".htm" => "text/html",
+            ".html" or ".htm" or ".php" => "text/html",
             ".css" => "text/css",
             _ => "text/plain"
         };
