@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 
@@ -16,9 +16,9 @@ public class Program
     {
         try
         {
-            if (File.Exists("config.json"))
+            if (File.Exists($"{AppDomain.CurrentDomain.BaseDirectory}config.json"))
             {
-                Config = JsonSerializer.Deserialize<Config>(File.ReadAllText("config.json"), new JsonSerializerOptions
+                Config = JsonSerializer.Deserialize<Config>(File.ReadAllText($"{AppDomain.CurrentDomain.BaseDirectory}config.json"), new JsonSerializerOptions
                 {
                     AllowTrailingCommas = true,
                     ReadCommentHandling = JsonCommentHandling.Skip
@@ -30,15 +30,15 @@ public class Program
                 {
                     WriteIndented = true
                 });
-                File.WriteAllText("config.json", configFile);
-            }
-
-            if (!Directory.Exists(Config.WebRootName))
-            {
-                Directory.CreateDirectory(Config.WebRootName);
+                File.WriteAllText($"{AppDomain.CurrentDomain.BaseDirectory}config.json", configFile);
             }
 
             WebRoot = $"{AppDomain.CurrentDomain.BaseDirectory}{Config.WebRootName}";
+            if (!Directory.Exists(WebRoot))
+            {
+                Directory.CreateDirectory(WebRoot);
+            }
+
             HostAddress = $"http://{Config.HostAddress}:{Config.HostPort}";
 
             listener = new HttpListener();
