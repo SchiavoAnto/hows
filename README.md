@@ -1,5 +1,6 @@
 # HOWS: Highly Optimized Web Server  
 HOWS is a simple, basic web server.  
+⚠️ This project is under heavy development! ⚠️
 
 ## Goal  
 The goal of HOWS is to be an easily configurable web server: the config is saved as a JSON file.  
