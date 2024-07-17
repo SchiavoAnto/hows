@@ -7,7 +7,6 @@ namespace HOWS;
 
 public class Program
 {
-    private static readonly string[] AutoExtensions = ["php", "html"];
     private static string WebRoot = "";
     private static string HostAddress = "";
     public static Config Config = new();
@@ -80,7 +79,7 @@ public class Program
             if (Directory.Exists(resPath))
             {
                 bool indexHandled = false;
-                foreach (string ext in AutoExtensions)
+                foreach (string ext in Config.AutoExtensions)
                 {
                     string indexFile = Path.Combine(resPath, $"index.{ext}");
                     if (File.Exists(indexFile))

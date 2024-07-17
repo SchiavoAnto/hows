@@ -1,4 +1,6 @@
-﻿namespace HOWS;
+using System.Text.Json;
+
+namespace HOWS;
 
 public class Config
 {
@@ -7,9 +9,10 @@ public class Config
     public string WebRootName { get; set; } = "www";
     public bool AllowDirList { get; set; } = true;
     public bool ShowVersion { get; set; } = true;
+    public string[] AutoExtensions { get; set; } = ["php", "html"];
 
     public override string ToString()
     {
-        return $"Config {{ HostAddress={HostAddress}, HostPort={HostPort}, WebRootName={WebRootName}, AllowDirList={AllowDirList}, ShowVersion={ShowVersion} }}";
+        return JsonSerializer.Serialize(this);
     }
 }
