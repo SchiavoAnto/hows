@@ -96,7 +96,8 @@ public class Program
                         string[] dirs = Directory.GetDirectories(resPath);
                         string[] files = Directory.GetFiles(resPath);
                         string baseFile = File.ReadAllText("Resources/dirlist.html");
-                        StringBuilder content = new($"<h1>Index of {absolutePath}</h1><ul>");
+                        StringBuilder content = new($"<h1>Index of {absolutePath}</h1>");
+                        content.AppendLine($"<p>{dirs.Length + files.Length} elements</p><ul>");
                         foreach (string dir in dirs)
                         {
                             string d = dir.Replace(WebRoot, "").Remove(0, 1);
