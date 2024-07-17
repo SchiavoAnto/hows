@@ -1,11 +1,13 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Diagnostics;
 
 namespace HOWS;
 
 public class Program
 {
+    private static readonly string[] AutoExtensions = ["php", "html"];
     private static string WebRoot = "";
     private static string HostAddress = "";
     public static Config Config = new();
@@ -73,22 +75,24 @@ public class Program
             string absolutePath = req?.Url?.AbsolutePath ?? "";
             string resPath = $"{WebRoot}{absolutePath}";
 
-            byte[] data;
+            byte[] data = [];
             // If the request is a directory
             if (Directory.Exists(resPath))
             {
-                string indexFile = Path.Combine(resPath, "index.html");
-                // If an index page exists, get that
-                if (File.Exists(indexFile))
+                bool indexHandled = false;
+                foreach (string ext in AutoExtensions)
                 {
-                    data = File.ReadAllBytes(indexFile);
-                    resp.ContentType = GetContentType(indexFile);
-                    resp.ContentEncoding = Encoding.UTF8;
-                    resp.ContentLength64 = data.LongLength;
-                    resp.StatusCode = (int)HttpStatusCode.OK;
+                    string indexFile = Path.Combine(resPath, $"index.{ext}");
+                    if (File.Exists(indexFile))
+                    {
+                        data = ReadFile(indexFile, ref resp);
+                        indexHandled = true;
+                        break;
+                    }
                 }
+
                 // Otherwise, list all items in the directory
-                else
+                if (!indexHandled)
                 {
                     // If allowed to list directory contents, list them
                     if (Config.AllowDirList)
@@ -136,9 +140,7 @@ public class Program
                 }
                 else
                 {
-                    string page = File.ReadAllText("Resources/404.html");
-                    page = page.Replace("@version", Config.ShowVersion ? Utils.GetVersion() : "");
-                    data = Encoding.UTF8.GetBytes(page);
+                    data = ReadErrorFile();
                 }
                 resp.ContentType = "text/html";
                 resp.ContentEncoding = Encoding.UTF8;
@@ -148,11 +150,7 @@ public class Program
             // The request is a file, read it and send the data
             else
             {
-                data = File.ReadAllBytes(resPath);
-                resp.ContentType = GetContentType(resPath);
-                resp.ContentEncoding = Encoding.UTF8;
-                resp.ContentLength64 = data.LongLength;
-                resp.StatusCode = (int)HttpStatusCode.OK;
+                data = ReadFile(resPath, ref resp);
             }
             //Console.WriteLine(dirPath);
             //Console.WriteLine($"File: {resPath}");
@@ -162,6 +160,62 @@ public class Program
             await resp.OutputStream.WriteAsync(data, 0, data.Length);
             resp.Close();
         }
+    }
+
+    private static byte[] ReadFile(string filePath, ref HttpListenerResponse resp)
+    {
+        byte[] data = [];
+        try
+        {
+            FileInfo fileInfo = new FileInfo(filePath);
+            if (fileInfo.Extension == ".php")
+            {
+                Process process = new()
+                {
+                    StartInfo = new()
+                    {
+                        FileName = "php",
+                        Arguments = filePath,
+                        RedirectStandardOutput = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                    }
+                };
+                process.Start();
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+                int exitCode = process.ExitCode;
+                if (exitCode != 0)
+                {
+                    data = ReadErrorFile("500 Internal Server Error", "500 Internal Server Error");
+                }
+                else
+                {
+                    data = Encoding.UTF8.GetBytes(output);
+                }
+            }
+            else
+            {
+                data = File.ReadAllBytes(filePath);
+            }
+            resp.ContentType = GetContentType(filePath);
+            resp.ContentEncoding = Encoding.UTF8;
+            resp.ContentLength64 = data.LongLength;
+            resp.StatusCode = (int)HttpStatusCode.OK;
+        }
+        catch
+        {
+            resp.StatusCode = (int)HttpStatusCode.InternalServerError;
+        }
+        return data;
+    }
+
+    private static byte[] ReadErrorFile(string title = "", string message = "")
+    {
+        string page = File.ReadAllText("Resources/error.html");
+        page = page.Replace("@title", title).Replace("@message", message);
+        page = page.Replace("@version", Config.ShowVersion ? Utils.GetVersion() : "");
+        return Encoding.UTF8.GetBytes(page);
     }
 
     private static string GetContentType(string filePath)
